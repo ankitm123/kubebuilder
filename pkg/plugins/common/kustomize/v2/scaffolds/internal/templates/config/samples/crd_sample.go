@@ -19,7 +19,7 @@ package samples
 import (
 	"path/filepath"
 
-	"sigs.k8s.io/kubebuilder/v3/pkg/machinery"
+	"sigs.k8s.io/kubebuilder/v4/pkg/machinery"
 )
 
 var _ machinery.Template = &CRDSample{}
@@ -28,14 +28,19 @@ var _ machinery.Template = &CRDSample{}
 type CRDSample struct {
 	machinery.TemplateMixin
 	machinery.ResourceMixin
+	machinery.ProjectNameMixin
 
 	Force bool
 }
 
-// SetTemplateDefaults implements file.Template
+// SetTemplateDefaults implements machinery.Template
 func (f *CRDSample) SetTemplateDefaults() error {
 	if f.Path == "" {
-		f.Path = filepath.Join("config", "samples", "%[group]_%[version]_%[kind].yaml")
+		if f.Resource.Group != "" {
+			f.Path = filepath.Join("config", "samples", "%[group]_%[version]_%[kind].yaml")
+		} else {
+			f.Path = filepath.Join("config", "samples", "%[version]_%[kind].yaml")
+		}
 	}
 	f.Path = f.Resource.Replacer().Replace(f.Path)
 
@@ -53,6 +58,9 @@ func (f *CRDSample) SetTemplateDefaults() error {
 const crdSampleTemplate = `apiVersion: {{ .Resource.QualifiedGroup }}/{{ .Resource.Version }}
 kind: {{ .Resource.Kind }}
 metadata:
+  labels:
+    app.kubernetes.io/name: {{ .ProjectName }}
+    app.kubernetes.io/managed-by: kustomize
   name: {{ lower .Resource.Kind }}-sample
 spec:
   # TODO(user): Add fields here

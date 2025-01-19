@@ -19,7 +19,7 @@ package rbac
 import (
 	"path/filepath"
 
-	"sigs.k8s.io/kubebuilder/v3/pkg/machinery"
+	"sigs.k8s.io/kubebuilder/v4/pkg/machinery"
 )
 
 var _ machinery.Template = &ServiceAccount{}
@@ -27,9 +27,10 @@ var _ machinery.Template = &ServiceAccount{}
 // ServiceAccount scaffolds a file that defines the service account the manager is deployed in.
 type ServiceAccount struct {
 	machinery.TemplateMixin
+	machinery.ProjectNameMixin
 }
 
-// SetTemplateDefaults implements file.Template
+// SetTemplateDefaults implements machinery.Template
 func (f *ServiceAccount) SetTemplateDefaults() error {
 	if f.Path == "" {
 		f.Path = filepath.Join("config", "rbac", "service_account.yaml")
@@ -43,6 +44,9 @@ func (f *ServiceAccount) SetTemplateDefaults() error {
 const serviceAccountTemplate = `apiVersion: v1
 kind: ServiceAccount
 metadata:
+  labels:
+    app.kubernetes.io/name: {{ .ProjectName }}
+    app.kubernetes.io/managed-by: kustomize
   name: controller-manager
   namespace: system
 `

@@ -19,30 +19,39 @@ package utils
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"sigs.k8s.io/kubebuilder/v3/pkg/plugin/util"
+	log "github.com/sirupsen/logrus"
+	"sigs.k8s.io/kubebuilder/v4/pkg/plugin/util"
 
-	. "github.com/onsi/ginkgo" //nolint:golint,revive
+	. "github.com/onsi/ginkgo/v2"
+)
+
+const (
+	certmanagerVersion        = "v1.16.3"
+	certmanagerURLTmpl        = "https://github.com/cert-manager/cert-manager/releases/download/%s/cert-manager.yaml"
+	prometheusOperatorVersion = "v0.77.1"
+	prometheusOperatorURL     = "https://github.com/prometheus-operator/prometheus-operator/" +
+		"releases/download/%s/bundle.yaml"
 )
 
 // TestContext specified to run e2e tests
 type TestContext struct {
 	*CmdContext
-	TestSuffix string
-	Domain     string
-	Group      string
-	Version    string
-	Kind       string
-	Resources  string
-	ImageName  string
-	BinaryName string
-	Kubectl    *Kubectl
-	K8sVersion *KubernetesVersion
+	TestSuffix   string
+	Domain       string
+	Group        string
+	Version      string
+	Kind         string
+	Resources    string
+	ImageName    string
+	BinaryName   string
+	Kubectl      *Kubectl
+	K8sVersion   *KubernetesVersion
+	IsRestricted bool
 }
 
 // NewTestContext init with a random suffix for test TestContext stuff,
@@ -89,13 +98,13 @@ func NewTestContext(binaryName string, env ...string) (*TestContext, error) {
 }
 
 func warnError(err error) {
-	fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
+	_, _ = fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
 }
 
 // Prepare prepares the test environment.
 func (t *TestContext) Prepare() error {
 	// Remove tools used by projects in the environment so the correct version is downloaded for each test.
-	fmt.Fprintln(GinkgoWriter, "cleaning up tools")
+	_, _ = fmt.Fprintln(GinkgoWriter, "cleaning up tools")
 	for _, toolName := range []string{"controller-gen", "kustomize"} {
 		if toolPath, err := exec.LookPath(toolName); err == nil {
 			if err := os.RemoveAll(toolPath); err != nil {
@@ -104,38 +113,22 @@ func (t *TestContext) Prepare() error {
 		}
 	}
 
-	fmt.Fprintf(GinkgoWriter, "preparing testing directory: %s\n", t.Dir)
-	return os.MkdirAll(t.Dir, 0755)
+	_, _ = fmt.Fprintf(GinkgoWriter, "preparing testing directory: %s\n", t.Dir)
+	return os.MkdirAll(t.Dir, 0o755)
 }
 
-const (
-	certmanagerVersionWithv1beta2CRs = "v0.11.0"
-	certmanagerLegacyVersion         = "v1.0.4"
-	certmanagerVersion               = "v1.5.3"
-
-	certmanagerURLTmplLegacy = "https://github.com/jetstack/cert-manager/releases/download/%s/cert-manager-legacy.yaml"
-	certmanagerURLTmpl       = "https://github.com/jetstack/cert-manager/releases/download/%s/cert-manager.yaml"
-)
-
 // makeCertManagerURL returns a kubectl-able URL for the cert-manager bundle.
-func (t *TestContext) makeCertManagerURL(hasv1beta1CRs bool) string {
-	// Return a URL for the manifest bundle with v1beta1 CRs.
-	if hasv1beta1CRs {
-		return fmt.Sprintf(certmanagerURLTmpl, certmanagerVersionWithv1beta2CRs)
-	}
-
-	// Determine which URL to use for a manifest bundle with v1 CRs.
-	// The most up-to-date bundle uses v1 CRDs, which were introduced in k8s v1.16.
-	if ver := t.K8sVersion.ServerVersion; ver.GetMajorInt() <= 1 && ver.GetMinorInt() < 16 {
-		return fmt.Sprintf(certmanagerURLTmplLegacy, certmanagerLegacyVersion)
-	}
+func (t *TestContext) makeCertManagerURL() string {
 	return fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
 }
 
-// InstallCertManager installs the cert manager bundle. If hasv1beta1CRs is true,
-// the legacy version (which uses v1alpha2 CRs) is installed.
-func (t *TestContext) InstallCertManager(hasv1beta1CRs bool) error {
-	url := t.makeCertManagerURL(hasv1beta1CRs)
+func (t *TestContext) makePrometheusOperatorURL() string {
+	return fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
+}
+
+// InstallCertManager installs the cert manager bundle.
+func (t *TestContext) InstallCertManager() error {
+	url := t.makeCertManagerURL()
 	if _, err := t.Kubectl.Apply(false, "-f", url, "--validate=false"); err != nil {
 		return err
 	}
@@ -149,61 +142,25 @@ func (t *TestContext) InstallCertManager(hasv1beta1CRs bool) error {
 	return err
 }
 
-// UninstallCertManager uninstalls the cert manager bundle. If hasv1beta1CRs is true,
-// the legacy version (which uses v1alpha2 CRs) is installed.
-func (t *TestContext) UninstallCertManager(hasv1beta1CRs bool) {
-	url := t.makeCertManagerURL(hasv1beta1CRs)
+// UninstallCertManager uninstalls the cert manager bundle.
+func (t *TestContext) UninstallCertManager() {
+	url := t.makeCertManagerURL()
 	if _, err := t.Kubectl.Delete(false, "-f", url); err != nil {
 		warnError(err)
 	}
 }
 
-const (
-	prometheusOperatorLegacyVersion = "0.33"
-	prometheusOperatorLegacyURL     = "https://raw.githubusercontent.com/coreos/prometheus-operator/release-%s/bundle.yaml"
-	prometheusOperatorVersion       = "0.51"
-	prometheusOperatorURL           = "https://raw.githubusercontent.com/prometheus-operator/" +
-		"prometheus-operator/release-%s/bundle.yaml"
-)
-
 // InstallPrometheusOperManager installs the prometheus manager bundle.
 func (t *TestContext) InstallPrometheusOperManager() error {
-	var url string
-	if ver := t.K8sVersion.ServerVersion; ver.GetMajorInt() <= 1 && ver.GetMinorInt() < 16 {
-		url = fmt.Sprintf(prometheusOperatorLegacyURL, prometheusOperatorLegacyVersion)
-	} else {
-		url = fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
-	}
-	_, err := t.Kubectl.Apply(false, "-f", url)
+	url := t.makePrometheusOperatorURL()
+	_, err := t.Kubectl.Command("create", "-f", url)
 	return err
 }
 
 // UninstallPrometheusOperManager uninstalls the prometheus manager bundle.
 func (t *TestContext) UninstallPrometheusOperManager() {
-	var url string
-	if ver := t.K8sVersion.ServerVersion; ver.GetMajorInt() <= 1 && ver.GetMinorInt() < 16 {
-		url = fmt.Sprintf(prometheusOperatorLegacyURL, prometheusOperatorLegacyVersion)
-	} else {
-		url = fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
-	}
+	url := t.makePrometheusOperatorURL()
 	if _, err := t.Kubectl.Delete(false, "-f", url); err != nil {
-		warnError(err)
-	}
-}
-
-// CleanupManifests is a helper func to run kustomize build and pipe the output to kubectl delete -f -
-func (t *TestContext) CleanupManifests(dir string) {
-	kustomizePath := filepath.Join(t.Dir, "bin", "kustomize")
-	if _, err := os.Stat(kustomizePath); err != nil {
-		// Just fail below with an error about kustomize not being installed globally.
-		kustomizePath = "kustomize"
-	}
-	cmd := exec.Command(kustomizePath, "build", dir)
-	output, err := t.Run(cmd)
-	if err != nil {
-		warnError(err)
-	}
-	if _, err := t.Kubectl.WithInput(string(output)).Command("delete", "-f", "-"); err != nil {
 		warnError(err)
 	}
 }
@@ -213,6 +170,15 @@ func (t *TestContext) Init(initOptions ...string) error {
 	initOptions = append([]string{"init"}, initOptions...)
 	//nolint:gosec
 	cmd := exec.Command(t.BinaryName, initOptions...)
+	_, err := t.Run(cmd)
+	return err
+}
+
+// Edit is for running `kubebuilder edit`
+func (t *TestContext) Edit(editOptions ...string) error {
+	editOptions = append([]string{"edit"}, editOptions...)
+	//nolint:gosec
+	cmd := exec.Command(t.BinaryName, editOptions...)
 	_, err := t.Run(cmd)
 	return err
 }
@@ -229,6 +195,15 @@ func (t *TestContext) CreateAPI(resourceOptions ...string) error {
 // CreateWebhook is for running `kubebuilder create webhook`
 func (t *TestContext) CreateWebhook(resourceOptions ...string) error {
 	resourceOptions = append([]string{"create", "webhook"}, resourceOptions...)
+	//nolint:gosec
+	cmd := exec.Command(t.BinaryName, resourceOptions...)
+	_, err := t.Run(cmd)
+	return err
+}
+
+// Regenerate is for running `kubebuilder alpha generate`
+func (t *TestContext) Regenerate(resourceOptions ...string) error {
+	resourceOptions = append([]string{"alpha", "generate"}, resourceOptions...)
 	//nolint:gosec
 	cmd := exec.Command(t.BinaryName, resourceOptions...)
 	_, err := t.Run(cmd)
@@ -253,13 +228,43 @@ func (t *TestContext) Tidy() error {
 // Destroy is for cleaning up the docker images for testing
 func (t *TestContext) Destroy() {
 	//nolint:gosec
-	cmd := exec.Command("docker", "rmi", "-f", t.ImageName)
-	if _, err := t.Run(cmd); err != nil {
-		warnError(err)
+	// if image name is not present or not provided skip execution of docker command
+	if t.ImageName != "" {
+		// Check white space from image name
+		if len(strings.TrimSpace(t.ImageName)) == 0 {
+			log.Println("Image not set, skip cleaning up of docker image")
+		} else {
+			cmd := exec.Command("docker", "rmi", "-f", t.ImageName)
+			if _, err := t.Run(cmd); err != nil {
+				warnError(err)
+			}
+		}
+
 	}
 	if err := os.RemoveAll(t.Dir); err != nil {
 		warnError(err)
 	}
+}
+
+// CreateManagerNamespace will create the namespace where the manager is deployed
+func (t *TestContext) CreateManagerNamespace() error {
+	_, err := t.Kubectl.Command("create", "ns", t.Kubectl.Namespace)
+	return err
+}
+
+// LabelNamespacesToEnforceRestricted will label specified namespaces so that we can verify
+// if the manifests can be applied in restricted environments with strict security policy enforced
+func (t *TestContext) LabelNamespacesToEnforceRestricted() error {
+	_, err := t.Kubectl.Command("label", "--overwrite", "ns", t.Kubectl.Namespace,
+		"pod-security.kubernetes.io/enforce=restricted")
+	return err
+}
+
+// RemoveNamespaceLabelToEnforceRestricted will remove the `pod-security.kubernetes.io/enforce` label
+// from the specified namespace
+func (t *TestContext) RemoveNamespaceLabelToEnforceRestricted() error {
+	_, err := t.Kubectl.Command("label", "ns", t.Kubectl.Namespace, "pod-security.kubernetes.io/enforce-")
+	return err
 }
 
 // LoadImageToKindCluster loads a local docker image to the kind cluster
@@ -269,6 +274,18 @@ func (t *TestContext) LoadImageToKindCluster() error {
 		cluster = v
 	}
 	kindOptions := []string{"load", "docker-image", t.ImageName, "--name", cluster}
+	cmd := exec.Command("kind", kindOptions...)
+	_, err := t.Run(cmd)
+	return err
+}
+
+// LoadImageToKindClusterWithName loads a local docker image with the name informed to the kind cluster
+func (t TestContext) LoadImageToKindClusterWithName(image string) error {
+	cluster := "kind"
+	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
+		cluster = v
+	}
+	kindOptions := []string{"load", "docker-image", "--name", cluster, image}
 	cmd := exec.Command("kind", kindOptions...)
 	_, err := t.Run(cmd)
 	return err
@@ -288,7 +305,7 @@ func (cc *CmdContext) Run(cmd *exec.Cmd) ([]byte, error) {
 	cmd.Env = append(os.Environ(), cc.Env...)
 	cmd.Stdin = cc.Stdin
 	command := strings.Join(cmd.Args, " ")
-	fmt.Fprintf(GinkgoWriter, "running: %s\n", command)
+	_, _ = fmt.Fprintf(GinkgoWriter, "running: %s\n", command)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return output, fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))
@@ -302,15 +319,67 @@ func (cc *CmdContext) Run(cmd *exec.Cmd) ([]byte, error) {
 func (t *TestContext) AllowProjectBeMultiGroup() error {
 	const multiGroup = `multigroup: true
 `
-	projectBytes, err := ioutil.ReadFile(filepath.Join(t.Dir, "PROJECT"))
+	projectBytes, err := os.ReadFile(filepath.Join(t.Dir, "PROJECT"))
 	if err != nil {
 		return err
 	}
 
 	projectBytes = append([]byte(multiGroup), projectBytes...)
-	err = ioutil.WriteFile(filepath.Join(t.Dir, "PROJECT"), projectBytes, 0644)
+	err = os.WriteFile(filepath.Join(t.Dir, "PROJECT"), projectBytes, 0o644)
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+// InstallHelm installs Helm in the e2e server.
+func (t *TestContext) InstallHelm() error {
+	helmInstallScript := "https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3"
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("curl -fsSL %s | bash", helmInstallScript))
+	_, err := t.Run(cmd)
+	if err != nil {
+		return err
+	}
+
+	verifyCmd := exec.Command("helm", "version")
+	_, err = t.Run(verifyCmd)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// UninstallHelmRelease removes the specified Helm release from the cluster.
+func (t *TestContext) UninstallHelmRelease() error {
+	ns := fmt.Sprintf("e2e-%s-system", t.TestSuffix)
+	cmd := exec.Command("helm", "uninstall",
+		fmt.Sprintf("release-%s", t.TestSuffix),
+		"--namespace", ns)
+
+	_, err := t.Run(cmd)
+	if err != nil {
+		return err
+	}
+
+	if _, err := t.Kubectl.Wait(false, "namespace", ns, "--for=delete", "--timeout=2m"); err != nil {
+		log.Printf("failed to wait for namespace deletion: %s", err)
+	}
+
+	return nil
+}
+
+// EditHelmPlugin is for running `kubebuilder edit --plugins=helm.kubebuilder.io/v1-alpha`
+func (t *TestContext) EditHelmPlugin() error {
+	cmd := exec.Command(t.BinaryName, "edit", "--plugins=helm/v1-alpha")
+	_, err := t.Run(cmd)
+	return err
+}
+
+// HelmInstallRelease is for running `helm install`
+func (t *TestContext) HelmInstallRelease() error {
+	cmd := exec.Command("helm", "install", fmt.Sprintf("release-%s", t.TestSuffix), "dist/chart",
+		"--namespace", fmt.Sprintf("e2e-%s-system", t.TestSuffix))
+	_, err := t.Run(cmd)
+	return err
 }

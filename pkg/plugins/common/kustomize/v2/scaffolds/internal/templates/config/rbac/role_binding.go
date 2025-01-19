@@ -19,7 +19,7 @@ package rbac
 import (
 	"path/filepath"
 
-	"sigs.k8s.io/kubebuilder/v3/pkg/machinery"
+	"sigs.k8s.io/kubebuilder/v4/pkg/machinery"
 )
 
 var _ machinery.Template = &RoleBinding{}
@@ -27,9 +27,10 @@ var _ machinery.Template = &RoleBinding{}
 // RoleBinding scaffolds a file that defines the role binding for the manager
 type RoleBinding struct {
 	machinery.TemplateMixin
+	machinery.ProjectNameMixin
 }
 
-// SetTemplateDefaults implements file.Template
+// SetTemplateDefaults implements machinery.Template
 func (f *RoleBinding) SetTemplateDefaults() error {
 	if f.Path == "" {
 		f.Path = filepath.Join("config", "rbac", "role_binding.yaml")
@@ -43,6 +44,9 @@ func (f *RoleBinding) SetTemplateDefaults() error {
 const managerBindingTemplate = `apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
+  labels:
+    app.kubernetes.io/name: {{ .ProjectName }}
+    app.kubernetes.io/managed-by: kustomize
   name: manager-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io

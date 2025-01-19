@@ -17,10 +17,12 @@ limitations under the License.
 package external
 
 import (
-	"sigs.k8s.io/kubebuilder/v3/pkg/machinery"
-	"sigs.k8s.io/kubebuilder/v3/pkg/model/resource"
-	"sigs.k8s.io/kubebuilder/v3/pkg/plugin"
-	"sigs.k8s.io/kubebuilder/v3/pkg/plugin/external"
+	"github.com/spf13/pflag"
+
+	"sigs.k8s.io/kubebuilder/v4/pkg/machinery"
+	"sigs.k8s.io/kubebuilder/v4/pkg/model/resource"
+	"sigs.k8s.io/kubebuilder/v4/pkg/plugin"
+	"sigs.k8s.io/kubebuilder/v4/pkg/plugin/external"
 )
 
 var _ plugin.CreateWebhookSubcommand = &createWebhookSubcommand{}
@@ -33,6 +35,14 @@ type createWebhookSubcommand struct {
 func (p *createWebhookSubcommand) InjectResource(*resource.Resource) error {
 	// Do nothing since resource flags are passed to the external plugin directly.
 	return nil
+}
+
+func (p *createWebhookSubcommand) UpdateMetadata(_ plugin.CLIMetadata, subcmdMeta *plugin.SubcommandMetadata) {
+	setExternalPluginMetadata("webhook", p.Path, subcmdMeta)
+}
+
+func (p *createWebhookSubcommand) BindFlags(fs *pflag.FlagSet) {
+	bindExternalPluginFlags(fs, "webhook", p.Path, p.Args)
 }
 
 func (p *createWebhookSubcommand) Scaffold(fs machinery.Filesystem) error {

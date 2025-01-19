@@ -24,6 +24,7 @@ function test_project {
   header_text "Performing tests in dir $1"
   pushd "$(dirname "$0")/../../testdata/$1"
   go mod tidy
+  go get -u golang.org/x/sys
   make test
   popd
 }
@@ -34,5 +35,4 @@ build_kb
 tools_k8s_version="1.19.2"
 fetch_tools
 test_project project-v2
-test_project project-v2-multigroup
-test_project project-v2-addon
+test_project project-v3

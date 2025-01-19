@@ -19,7 +19,7 @@ package webhook
 import (
 	"path/filepath"
 
-	"sigs.k8s.io/kubebuilder/v3/pkg/machinery"
+	"sigs.k8s.io/kubebuilder/v4/pkg/machinery"
 )
 
 var _ machinery.Template = &KustomizeConfig{}
@@ -29,7 +29,7 @@ type KustomizeConfig struct {
 	machinery.TemplateMixin
 }
 
-// SetTemplateDefaults implements file.Template
+// SetTemplateDefaults implements machinery.Template
 func (f *KustomizeConfig) SetTemplateDefaults() error {
 	if f.Path == "" {
 		f.Path = filepath.Join("config", "webhook", "kustomizeconfig.yaml")
@@ -44,7 +44,7 @@ func (f *KustomizeConfig) SetTemplateDefaults() error {
 }
 
 //nolint:lll
-const kustomizeConfigWebhookTemplate = `# the following config is for teaching kustomize where to look at when substituting vars.
+const kustomizeConfigWebhookTemplate = `# the following config is for teaching kustomize where to look at when substituting nameReference.
 # It requires kustomize v2.1.0 or newer to work properly.
 nameReference:
 - kind: Service
@@ -66,7 +66,4 @@ namespace:
   group: admissionregistration.k8s.io
   path: webhooks/clientConfig/service/namespace
   create: true
-
-varReference:
-- path: metadata/annotations
 `

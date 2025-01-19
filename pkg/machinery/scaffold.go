@@ -28,8 +28,8 @@ import (
 	"github.com/spf13/afero"
 	"golang.org/x/tools/imports"
 
-	"sigs.k8s.io/kubebuilder/v3/pkg/config"
-	"sigs.k8s.io/kubebuilder/v3/pkg/model/resource"
+	"sigs.k8s.io/kubebuilder/v4/pkg/config"
+	"sigs.k8s.io/kubebuilder/v4/pkg/model/resource"
 )
 
 const (
@@ -196,6 +196,10 @@ func (Scaffold) buildFileModel(t Template, models map[string]*File) error {
 func doTemplate(t Template) ([]byte, error) {
 	// Create a new template.Template using the type of the Template as the name
 	temp := template.New(fmt.Sprintf("%T", t))
+	leftDelim, rightDelim := t.GetDelim()
+	if leftDelim != "" && rightDelim != "" {
+		temp.Delims(leftDelim, rightDelim)
+	}
 
 	// Set the function map to be used
 	fm := DefaultFuncMap()

@@ -17,8 +17,8 @@ limitations under the License.
 package external
 
 import (
-	"sigs.k8s.io/kubebuilder/v3/pkg/config"
-	"sigs.k8s.io/kubebuilder/v3/pkg/plugin"
+	"sigs.k8s.io/kubebuilder/v4/pkg/config"
+	"sigs.k8s.io/kubebuilder/v4/pkg/plugin"
 )
 
 var _ plugin.Full = Plugin{}
@@ -72,4 +72,9 @@ func (p Plugin) GetEditSubcommand() plugin.EditSubcommand {
 		Path: p.Path,
 		Args: p.Args,
 	}
+}
+
+// DeprecationWarning define the deprecation message or return empty when plugin is not deprecated
+func (p Plugin) DeprecationWarning() string {
+	return ""
 }

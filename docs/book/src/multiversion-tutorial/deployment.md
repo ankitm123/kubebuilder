@@ -1,6 +1,6 @@
 # Deployment and Testing
 
-Before we can test out our conversion, we'll need to enable them conversion in our CRD:
+Before we can test out our conversion, we'll need to enable them in our CRD:
 
 Kubebuilder generates Kubernetes manifests under the `config` directory with webhook
 bits disabled. To enable them, we need to:
@@ -11,9 +11,6 @@ bits disabled. To enable them, we need to:
 
 - Enable `../certmanager` and `../webhook` directories under the
   `bases` section in `config/default/kustomization.yaml` file.
-
-- Enable `manager_webhook_patch.yaml` under the `patches` section
-  in `config/default/kustomization.yaml` file.
 
 - Enable all the vars under the `CERTMANAGER` section in
   `config/default/kustomization.yaml` file.
@@ -34,7 +31,7 @@ You'll need [cert-manager](../cronjob-tutorial/cert-manager.md) installed
 (version `0.9.0+`) unless you've got some other certificate management
 solution.  The Kubebuilder team has tested the instructions in this tutorial
 with
-[0.9.0-alpha.0](https://github.com/jetstack/cert-manager/releases/tag/v0.9.0-alpha.0)
+[0.9.0-alpha.0](https://github.com/cert-manager/cert-manager/releases/tag/v0.9.0-alpha.0)
 release.
 
 Once all our ducks are in a row with certificates, we can run `make
@@ -43,7 +40,7 @@ controller-manager deployment) onto the cluster.
 
 ## Testing
 
-Once all of the bits are up an running on the cluster with conversion enabled, we can test out our
+Once all of the bits are up and running on the cluster with conversion enabled, we can test out our
 conversion by requesting different versions.
 
 We'll make a v2 version based on our v1 version (put it under `config/samples`)

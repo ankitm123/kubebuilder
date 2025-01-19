@@ -17,20 +17,20 @@ limitations under the License.
 package v2
 
 import (
-	"sigs.k8s.io/kubebuilder/v3/pkg/config"
-	cfgv3 "sigs.k8s.io/kubebuilder/v3/pkg/config/v3"
-	"sigs.k8s.io/kubebuilder/v3/pkg/model/stage"
-	"sigs.k8s.io/kubebuilder/v3/pkg/plugin"
-	"sigs.k8s.io/kubebuilder/v3/pkg/plugins"
+	"sigs.k8s.io/kubebuilder/v4/pkg/config"
+	cfgv3 "sigs.k8s.io/kubebuilder/v4/pkg/config/v3"
+	"sigs.k8s.io/kubebuilder/v4/pkg/model/stage"
+	"sigs.k8s.io/kubebuilder/v4/pkg/plugin"
+	"sigs.k8s.io/kubebuilder/v4/pkg/plugins"
 )
 
 // KustomizeVersion is the kubernetes-sigs/kustomize version to be used in the project
-const KustomizeVersion = "v4.5.3"
+const KustomizeVersion = "v5.5.0"
 
 const pluginName = "kustomize.common." + plugins.DefaultNameQualifier
 
 var (
-	pluginVersion            = plugin.Version{Number: 2, Stage: stage.Alpha}
+	pluginVersion            = plugin.Version{Number: 2, Stage: stage.Stable}
 	supportedProjectVersions = []config.Version{cfgv3.Version}
 )
 
@@ -65,4 +65,9 @@ func (p Plugin) GetCreateAPISubcommand() plugin.CreateAPISubcommand { return &p.
 // GetCreateWebhookSubcommand will return the subcommand which is responsible for scaffolding webhooks
 func (p Plugin) GetCreateWebhookSubcommand() plugin.CreateWebhookSubcommand {
 	return &p.createWebhookSubcommand
+}
+
+// DeprecationWarning define the deprecation message or return empty when plugin is not deprecated
+func (p Plugin) DeprecationWarning() string {
+	return ""
 }

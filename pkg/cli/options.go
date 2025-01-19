@@ -29,11 +29,11 @@ import (
 	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
 
-	"sigs.k8s.io/kubebuilder/v3/pkg/config"
-	cfgv2 "sigs.k8s.io/kubebuilder/v3/pkg/config/v2"
-	cfgv3 "sigs.k8s.io/kubebuilder/v3/pkg/config/v3"
-	"sigs.k8s.io/kubebuilder/v3/pkg/plugin"
-	"sigs.k8s.io/kubebuilder/v3/pkg/plugins/external"
+	"sigs.k8s.io/kubebuilder/v4/pkg/config"
+	cfgv3 "sigs.k8s.io/kubebuilder/v4/pkg/config/v3"
+	"sigs.k8s.io/kubebuilder/v4/pkg/machinery"
+	"sigs.k8s.io/kubebuilder/v4/pkg/plugin"
+	"sigs.k8s.io/kubebuilder/v4/pkg/plugins/external"
 )
 
 var retrievePluginsRoot = getPluginsRoot
@@ -153,34 +153,89 @@ func WithCompletion() Option {
 	}
 }
 
+// WithFilesystem is an Option that allows to set the filesystem used in the CLI.
+func WithFilesystem(fs machinery.Filesystem) Option {
+	return func(c *CLI) error {
+		if fs.FS == nil {
+			return errors.New("invalid filesystem")
+		}
+
+		c.fs = fs
+		return nil
+	}
+}
+
 // parseExternalPluginArgs returns the program arguments.
 func parseExternalPluginArgs() (args []string) {
-	args = make([]string, len(os.Args)-1)
-	copy(args, os.Args[1:])
+	// Loop through os.Args and only get flags and their values that should be passed to the plugins
+	// this also removes the --plugins flag and its values from the list passed to the external plugin
+	for i := range os.Args {
+		if strings.Contains(os.Args[i], "--") && !strings.Contains(os.Args[i], "--plugins") {
+			args = append(args, os.Args[i])
+
+			// Don't go out of bounds and don't append the next value if it is a flag
+			if i+1 < len(os.Args) && !strings.Contains(os.Args[i+1], "--") {
+				args = append(args, os.Args[i+1])
+			}
+		}
+	}
 
 	return args
 }
 
-// getPluginsRoot detects the host system and gets the plugins root based on the host.
+// isHostSupported checks whether the host system is supported or not.
+func isHostSupported(host string) bool {
+	for _, platform := range supportedPlatforms {
+		if host == platform {
+			return true
+		}
+	}
+	return false
+}
+
+// getPluginsRoot gets the plugin root path.
 func getPluginsRoot(host string) (pluginsRoot string, err error) {
+	if !isHostSupported(host) {
+		// freebsd, openbsd, windows...
+		return "", fmt.Errorf("host not supported: %v", host)
+	}
+
+	// if user provides specific path, return
+	if pluginsPath := os.Getenv("EXTERNAL_PLUGINS_PATH"); pluginsPath != "" {
+		// verify if the path actually exists
+		if _, err := os.Stat(pluginsPath); err != nil {
+			if os.IsNotExist(err) {
+				// the path does not exist
+				return "", fmt.Errorf("the specified path %s does not exist", pluginsPath)
+			}
+			// some other error
+			return "", fmt.Errorf("error checking the path: %v", err)
+		}
+		// the path exists
+		return pluginsPath, nil
+	}
+
+	// if no specific path, detects the host system and gets the plugins root based on the host.
+	pluginsRelativePath := filepath.Join("kubebuilder", "plugins")
+	if xdgHome := os.Getenv("XDG_CONFIG_HOME"); xdgHome != "" {
+		return filepath.Join(xdgHome, pluginsRelativePath), nil
+	}
+
 	switch host {
 	case "darwin":
 		logrus.Debugf("Detected host is macOS.")
-		pluginsRoot = filepath.Join("Library", "ApplicationSupport", "kubebuilder", "plugins")
+		pluginsRoot = filepath.Join("Library", "Application Support", pluginsRelativePath)
 	case "linux":
 		logrus.Debugf("Detected host is Linux.")
-		pluginsRoot = filepath.Join(".config", "kubebuilder", "plugins")
-	default:
-		// freebsd, openbsd, windows...
-		return "", fmt.Errorf("Host not supported: %v", host)
+		pluginsRoot = filepath.Join(".config", pluginsRelativePath)
 	}
-	userHomeDir, err := getHomeDir()
+
+	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("error retrieving home dir: %v", err)
 	}
-	pluginsRoot = filepath.Join(userHomeDir, pluginsRoot)
 
-	return pluginsRoot, nil
+	return filepath.Join(userHomeDir, pluginsRoot), nil
 }
 
 // DiscoverExternalPlugins discovers the external plugins in the plugins root directory
@@ -251,7 +306,7 @@ func DiscoverExternalPlugins(fs afero.Fs) (ps []plugin.Plugin, err error) {
 					ep := external.Plugin{
 						PName:                     pluginInfo.Name(),
 						Path:                      filepath.Join(pluginsRoot, pluginInfo.Name(), version.Name(), pluginFile.Name()),
-						PSupportedProjectVersions: []config.Version{cfgv2.Version, cfgv3.Version},
+						PSupportedProjectVersions: []config.Version{cfgv3.Version},
 						Args:                      parseExternalPluginArgs(),
 					}
 
@@ -275,17 +330,4 @@ func DiscoverExternalPlugins(fs afero.Fs) (ps []plugin.Plugin, err error) {
 // isPluginExectuable checks if a plugin is an executable based on the bitmask and returns true or false.
 func isPluginExectuable(mode fs.FileMode) bool {
 	return mode&0111 != 0
-}
-
-// getHomeDir returns $XDG_CONFIG_HOME if set, otherwise $HOME.
-func getHomeDir() (string, error) {
-	var err error
-	xdgHome := os.Getenv("XDG_CONFIG_HOME")
-	if xdgHome == "" {
-		xdgHome, err = os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-	}
-	return xdgHome, nil
 }

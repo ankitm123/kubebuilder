@@ -17,15 +17,16 @@ limitations under the License.
 package scaffolds
 
 import (
-	"fmt"
+	log "github.com/sirupsen/logrus"
 
-	"sigs.k8s.io/kubebuilder/v3/pkg/config"
-	"sigs.k8s.io/kubebuilder/v3/pkg/machinery"
-	"sigs.k8s.io/kubebuilder/v3/pkg/plugins"
-	"sigs.k8s.io/kubebuilder/v3/pkg/plugins/common/kustomize/v2/scaffolds/internal/templates/config/kdefault"
-	"sigs.k8s.io/kubebuilder/v3/pkg/plugins/common/kustomize/v2/scaffolds/internal/templates/config/manager"
-	"sigs.k8s.io/kubebuilder/v3/pkg/plugins/common/kustomize/v2/scaffolds/internal/templates/config/prometheus"
-	"sigs.k8s.io/kubebuilder/v3/pkg/plugins/common/kustomize/v2/scaffolds/internal/templates/config/rbac"
+	"sigs.k8s.io/kubebuilder/v4/pkg/config"
+	"sigs.k8s.io/kubebuilder/v4/pkg/machinery"
+	"sigs.k8s.io/kubebuilder/v4/pkg/plugins"
+	"sigs.k8s.io/kubebuilder/v4/pkg/plugins/common/kustomize/v2/scaffolds/internal/templates/config/kdefault"
+	"sigs.k8s.io/kubebuilder/v4/pkg/plugins/common/kustomize/v2/scaffolds/internal/templates/config/manager"
+	network_policy "sigs.k8s.io/kubebuilder/v4/pkg/plugins/common/kustomize/v2/scaffolds/internal/templates/config/network-policy"
+	"sigs.k8s.io/kubebuilder/v4/pkg/plugins/common/kustomize/v2/scaffolds/internal/templates/config/prometheus"
+	"sigs.k8s.io/kubebuilder/v4/pkg/plugins/common/kustomize/v2/scaffolds/internal/templates/config/rbac"
 )
 
 const (
@@ -55,30 +56,37 @@ func (s *initScaffolder) InjectFS(fs machinery.Filesystem) {
 
 // Scaffold implements cmdutil.Scaffolder
 func (s *initScaffolder) Scaffold() error {
-	fmt.Println("Writing kustomize manifests for you to edit...")
+	log.Println("Writing kustomize manifests for you to edit...")
 
 	// Initialize the machinery.Scaffold that will write the files to disk
 	scaffold := machinery.NewScaffold(s.fs,
 		machinery.WithConfig(s.config),
 	)
 
-	return scaffold.Execute(
+	templates := []machinery.Builder{
 		&rbac.Kustomization{},
-		&rbac.AuthProxyRole{},
-		&rbac.AuthProxyRoleBinding{},
-		&rbac.AuthProxyService{},
-		&rbac.AuthProxyClientRole{},
+		&kdefault.MetricsService{},
 		&rbac.RoleBinding{},
+		// We need to create a Role because if the project
+		// has not CRD define the controller-gen will not generate this file
+		&rbac.Role{},
+		&rbac.MetricsAuthRole{},
+		&rbac.MetricsAuthRoleBinding{},
+		&rbac.MetricsReaderRole{},
 		&rbac.LeaderElectionRole{},
 		&rbac.LeaderElectionRoleBinding{},
 		&rbac.ServiceAccount{},
 		&manager.Kustomization{},
+		&kdefault.ManagerMetricsPatch{},
+		&kdefault.CertManagerMetricsPatch{},
 		&manager.Config{Image: imageName},
-		&manager.ControllerManagerConfig{},
 		&kdefault.Kustomization{},
-		&kdefault.ManagerAuthProxyPatch{},
-		&kdefault.ManagerConfigPatch{},
+		&network_policy.Kustomization{},
+		&network_policy.PolicyAllowMetrics{},
 		&prometheus.Kustomization{},
 		&prometheus.Monitor{},
-	)
+		&prometheus.ServiceMonitorPatch{},
+	}
+
+	return scaffold.Execute(templates...)
 }

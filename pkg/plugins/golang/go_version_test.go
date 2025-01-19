@@ -19,8 +19,7 @@ package golang
 import (
 	"sort"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/ginkgo/extensions/table"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
@@ -196,6 +195,12 @@ var _ = Describe("checkGoVersion", func() {
 		Entry("for go 1.17.4", "go1.17.4"),
 		Entry("for go 1.17.5", "go1.17.5"),
 		Entry("for go 1.18.1", "go1.18.1"),
+		Entry("for go.1.19", "go1.19"),
+		Entry("for go.1.19.1", "go1.19.1"),
+		Entry("for go.1.20", "go1.20"),
+		Entry("for go.1.21", "go1.21"),
+		Entry("for go.1.22", "go1.22"),
+		Entry("for go.1.23", "go1.23"),
 	)
 
 	DescribeTable("should return an error for non-supported go versions",

@@ -19,7 +19,7 @@ package rbac
 import (
 	"path/filepath"
 
-	"sigs.k8s.io/kubebuilder/v3/pkg/machinery"
+	"sigs.k8s.io/kubebuilder/v4/pkg/machinery"
 )
 
 var _ machinery.Template = &LeaderElectionRoleBinding{}
@@ -27,9 +27,10 @@ var _ machinery.Template = &LeaderElectionRoleBinding{}
 // LeaderElectionRoleBinding scaffolds a file that defines the role binding that allows leader election
 type LeaderElectionRoleBinding struct {
 	machinery.TemplateMixin
+	machinery.ProjectNameMixin
 }
 
-// SetTemplateDefaults implements file.Template
+// SetTemplateDefaults implements machinery.Template
 func (f *LeaderElectionRoleBinding) SetTemplateDefaults() error {
 	if f.Path == "" {
 		f.Path = filepath.Join("config", "rbac", "leader_election_role_binding.yaml")
@@ -43,6 +44,9 @@ func (f *LeaderElectionRoleBinding) SetTemplateDefaults() error {
 const leaderElectionRoleBindingTemplate = `apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
+  labels:
+    app.kubernetes.io/name: {{ .ProjectName }}
+    app.kubernetes.io/managed-by: kustomize
   name: leader-election-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
